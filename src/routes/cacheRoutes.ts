@@ -14,5 +14,5 @@ export const cacheRoutes = new Elysia()
 	})
     .get('/get-routes', (ctx) => {
         // return JSON.stringify(ctx.cache.get("routes"))
-        return JSON.stringify(ctx.cache.get("routes"))
+        return ctx.cache.get("routes")
     })

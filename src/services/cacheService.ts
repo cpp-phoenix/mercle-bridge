@@ -1,71 +1,106 @@
 
 import { GET_BALANCE, GET_QUOTE, SUPPORTED_CHAINS } from "../constants/constants";
-import { Cache } from "../dto/cache";
+import { TokenBalanceResponse, QuoteResponse } from "../dto/socketDTOs";
+import { Cache, chainData, userData, UserData, TokenData, tokenData, ChainData, cachebridgeData, CachebridgeData, CachebridgeDataPerChain, cachebridgeDataPerChain } from "../dto/cache";
+import { ChainsData, ChainData as ChainDataDTO } from "../dto/chainsDataDTO";
 
 export const cacheRoute = async (cache: Cache) => {
     let chainRoutes= new Map()
+    const chainsData: ChainsData = SUPPORTED_CHAINS
     for (const [i, iValue] of Object.entries(SUPPORTED_CHAINS)) {
-        let innerRoute = new Map()
-        for (const [j, jValue] of Object.entries(SUPPORTED_CHAINS)) {
-            if(j != i) {
-                let response = await getQuote(j, jValue.tokens["USDC"], i, iValue.tokens["USDC"], "", "")
-                if(response.status == 200) {
-                    let jsonResp = await response.json()
-                    let minGas = 0;
-                    let minTimeTaken = 0;
-                    jsonResp["result"]["routes"].forEach((obj) => {
-                        let curGas = obj["totalGasFeesInUsd"]
-                        if(minTimeTaken == 0 || minGas > curGas) {
-                            minGas = curGas
-                            minTimeTaken = obj["serviceTime"]
-                        }
-                    });
-                    if(minGas > 0) {
-                        innerRoute.set(j, {
-                            "bridgeCost": minGas,
-                            "bridgeTime": minTimeTaken
-                        })
-                    }
-                }
-            }
-        }
-        console.log(innerRoute)
-        chainRoutes.set(i, Object.fromEntries(innerRoute))
+        const innerRoute: CachebridgeDataPerChain = await getRouteDataPerChain(chainsData, i, iValue, "100000000", "0xd76807Ea0409ff3b849469d9f8F23364d8CE68dE", "USDC")
+        chainRoutes.set(i, getRouteDataPerChain)
     }
-    console.log("finished")
     cache.set("routes", Object.fromEntries(chainRoutes))
 }
 
-export const cacheUserData = async (userAddress: string, cache: Cache) => {
-    let tokenBalances = new Map()
-    for (const [key, value] of Object.entries(SUPPORTED_CHAINS)) {
+export const cacheUserData = async (userAddress: string, cache: Cache, tokenId: string): Promise<TokenData> => {
+    let balanceMap = new Map()
+    let promises = []
+    let userCachedData: UserData = cache.get(userAddress)
+    const _chainsData: ChainsData = SUPPORTED_CHAINS
+    
+    if(userCachedData === undefined) {
+        userCachedData = Object.create(userData)
+    }
+    if(tokenId === undefined) {
+        return Object.create(tokenData)
+    }
+
+    for (const [key, value] of Object.entries(_chainsData)) {
         if(value.active) {
-            let response = await getBalance(value.tokens["USDC"], key, userAddress)
-            if (response.status == 200) {
-                const jsonResp = await response.json()
-                const tokenBalance = jsonResp["result"]["balance"]
-                tokenBalances.set(key, tokenBalance)
-            }
+            promises.push(new Promise(async (resolve) => {
+                let response = await getBalance(value.tokens[tokenId], key, userAddress)
+                if (response.status == 200) {
+                    const jsonResp: TokenBalanceResponse = await response.json()
+                    const tokenBalance = jsonResp.result.balance
+                    balanceMap.set(key, Number(tokenBalance))
+                }
+                resolve({});
+              })
+            )
         }
     }
-    console.log(tokenBalances)
-    cache.set(userAddress, Object.fromEntries(tokenBalances))
+
+    await Promise.all(promises)
+
+    userCachedData[tokenId] = {
+        updatedAt: Date.now(),
+        balances: Object.fromEntries(balanceMap)
+    }
+
+    cache.set(userAddress, userCachedData)
+    return userCachedData[tokenId]
 }
 
-const getQuote = async (fromChainId: string, fromTokenAddress: string, toChainId: string, toTokenAddress: string, fromAmount: string, userAddress: string) => {
+export const getRouteDataPerChain = async (chains: ChainsData, destChain: string, destChainData: ChainDataDTO, fromAmount: string, userAddress: string, tokenId: string): Promise<CachebridgeDataPerChain> => {
+    let innerRoute: CachebridgeDataPerChain = Object.create(cachebridgeDataPerChain)
+    let promises = []
+    for (const [j, jValue] of Object.entries(chains)) {
+        if(j != destChain && jValue.active) {
+            promises.push(new Promise(async (resolve) => {
+                let response = await getQuote(j, jValue.tokens[tokenId], destChain, destChainData.tokens[tokenId], fromAmount, userAddress)
+                if(response.status == 200) {
+                    let jsonResp: QuoteResponse = await response.json()
+                    let minGas = 0;
+                    let minTimeTaken = 0;
+                    jsonResp.result.routes.forEach((data) => {
+                        let curGas = data.totalGasFeesInUsd
+                        if(minTimeTaken == 0 || minGas > curGas) {
+                            minGas = curGas
+                            minTimeTaken = data.serviceTime
+                        }
+                    })
+                    if(minGas > 0) {
+                        innerRoute[Number(j)] = {
+                            bridgeCost: minGas,
+                            bridgeTime: minTimeTaken
+                        }
+                    }
+                }
+                resolve({});
+            }))
+        }
+    }
+    await Promise.all(promises);
+    console.log("Promise resolved")
+    return innerRoute
+} 
+
+const getQuote = async (fromChainId: string, fromTokenAddress: string, toChainId: string, toTokenAddress: string, fromAmount: string, userAddress: string): Promise<Response> => {
     const getBalanceUrl = process.env.BUNGEE_BASE_URL + GET_QUOTE + "?"
     const params = new URLSearchParams()
     params.append('fromChainId', fromChainId)
     params.append('fromTokenAddress', fromTokenAddress)
     params.append('toChainId', toChainId)
     params.append('toTokenAddress', toTokenAddress)
-    params.append('fromAmount', "100000000")
-    params.append('userAddress', "0xd76807Ea0409ff3b849469d9f8F23364d8CE68dE")
+    params.append('fromAmount', fromAmount)
+    params.append('userAddress', userAddress)
     params.append('uniqueRoutesPerBridge', "true")
     params.append('sort', "gas")
     const headers = new Headers({
         'Content-Type': 'application/json',
-        'API-KEY': process.env.BUNGEE_API_KEY
+        'API-KEY': String(process.env.BUNGEE_API_KEY)
     });  
     const response = await fetch(getBalanceUrl + params,{
         method: 'GET',
@@ -74,7 +109,7 @@ const getQuote = async (fromChainId: string, fromTokenAddress: string, toChainId
     return response
 }
 
-const getBalance = async (tokenAddress: string, targetChain: string, userAddress: string) => {
+const getBalance = async (tokenAddress: string, targetChain: string, userAddress: string): Promise<Response> => {
     const getBalanceUrl = process.env.BUNGEE_BASE_URL + GET_BALANCE + "?"
     const params = new URLSearchParams()
     params.append('tokenAddress', tokenAddress)
@@ -82,7 +117,7 @@ const getBalance = async (tokenAddress: string, targetChain: string, userAddress
     params.append('userAddress', userAddress)
     const headers = new Headers({
         'Content-Type': 'application/json',
-        'API-KEY': process.env.BUNGEE_API_KEY
+        'API-KEY': String(process.env.BUNGEE_API_KEY)
     });  
     const response = await fetch(getBalanceUrl + params,{
         method: 'GET',
