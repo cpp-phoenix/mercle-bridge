@@ -121,6 +121,17 @@ const calculateRouteRecursive = (index: number, length: number, chainIds: string
         curTime = 0
     }
     let curArray = []
+    if(remainingBalance <= curBalance) {
+        curArray.push({
+            "chain": chainsData[curChain].name,
+            "chainId": curChain,
+            "amount": remainingBalance,
+            "serviceTime": curTime,
+            "fee": curFee
+        })
+        return [curFee, curTime, curArray]
+    }
+
     curArray.push({
         "chain": chainsData[curChain].name,
         "chainId": curChain,
@@ -128,9 +139,6 @@ const calculateRouteRecursive = (index: number, length: number, chainIds: string
         "serviceTime": curTime,
         "fee": curFee
     })
-    if(remainingBalance <= curBalance) {
-        return [curFee, curTime, curArray]
-    }
 
     if(index == length - 1) {
         return [-1, -1 ,[]];

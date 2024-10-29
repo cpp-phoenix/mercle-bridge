@@ -35,20 +35,20 @@ export const SUPPORTED_CHAINS= {
         name: "Optimism",
         active: true,
         tokens: {
-            "USDC": "0x7f5c764cbc14f9669b88837ca1490cca17c31607"
+            "USDC": "0x0b2c639c533813f4aa9d7837caf62653d097ff85"
         },
         tokenIds: {
-            "0x7f5c764cbc14f9669b88837ca1490cca17c31607": "USDC"
+            "0x0b2c639c533813f4aa9d7837caf62653d097ff85": "USDC"
         }
     },
     42161: {
         name: "Arbitrum",
         active: true,
         tokens: {
-            "USDC": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+            "USDC": "0xff970a61a04b1ca14834a43f5de4533ebddb5cc8"
         },
         tokenIds: {
-            "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48": "USDC"
+            "0xff970a61a04b1ca14834a43f5de4533ebddb5cc8": "USDC"
         }
     },
     100: {
